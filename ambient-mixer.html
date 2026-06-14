@@ -281,7 +281,7 @@
     display: flex;
     align-items: center;
     justify-content: center;
-    padding: 0;
+    padding: 2px 0 0 3px;
     flex-shrink: 0;
     transition: all 0.2s;
     opacity: 0.45;
@@ -348,7 +348,7 @@
     </div>
     <div class="slider-wrap">
       <span class="vol-label">vol</span>
-      <input type="range" min="0" max="100" value="40" aria-label="Thunder and rain volume">
+      <input type="range" min="0" max="100" value="85" aria-label="Storm volume">
     </div>
   </div>
 
@@ -372,7 +372,7 @@
     </div>
     <div class="slider-wrap">
       <span class="vol-label">vol</span>
-      <input type="range" min="0" max="100" value="45" aria-label="Brown noise volume">
+      <input type="range" min="0" max="100" value="8" aria-label="Brown noise volume">
     </div>
   </div>
 
@@ -631,7 +631,7 @@ function makeBrownBuf(seconds, k) {
     const w = Math.random() * 2 - 1;
     d[i] = (last + k * w) / (1 + k);
     last = d[i];
-    d[i] *= (3 / k) * 0.08;
+    d[i] *= (3 / k) * 0.006;
   }
   return buf;
 }
@@ -649,7 +649,7 @@ function loopBuf(buf, gainNode, offset) {
 function makeBrownNoise(vol) {
   const buf = makeBrownBuf(10, 0.022);
   const gain = ctx.createGain();
-  gain.gain.value = vol * 1.4;
+  gain.gain.value = vol * 0.175;
   gain.connect(getMaster());
   const src = loopBuf(buf, gain);
   return { gain, stop() { try { src.stop(); } catch(e){} } };
@@ -899,8 +899,15 @@ function drawScene() {
   const hasRain = p.has('rain');
   const hasThunder = p.has('thunder');
   const hasFire = p.has('fire');
-  const hasBreeze = false; // breeze replaced by Lofi Girl button
+  const hasTrain = p.has('train');
+  const hasBreeze = false;
   const anySound = p.size > 0;
+
+  // ── Wheel of the Year: season & sabbat detection ───────────────────────────
+  const _nd=new Date(),_mo=_nd.getMonth(),_dy=_nd.getDate(),_md=_mo*100+_dy;
+  const season=_mo>=2&&_mo<=4?'spring':_mo>=5&&_mo<=7?'summer':_mo>=8&&_mo<=10?'autumn':'winter';
+  // Sabbat windows: 2 weeks before the date, 1 day after
+  const sabbat=_md>=917&&_md<=1001?'samhain':_md>=1107&&_md<=1122?'yule':_md>=19&&_md<=103?'imbolc':_md>=207&&_md<=221?'ostara':_md>=317&&_md<=402?'beltane':_md>=507&&_md<=522?'litha':_md>=618&&_md<=702?'lughnasadh':_md>=808&&_md<=823?'mabon':null;
 
   c.clearRect(0, 0, W, H);
 
@@ -1120,6 +1127,234 @@ function drawScene() {
   for (let r = wyRow; r < wyRow+whRows; r++) { pxFull(midCol2,r,frameCol); pxFull(midCol2+1,r,frameSha); }
   for (let col2 = wCol; col2 < wCol+wwCols; col2++) { pxFull(col2,midRow2,frameCol); pxFull(col2,midRow2+1,frameSha); }
 
+  // ── Exterior landscape (visible through window glass) ────────────────────────
+  // Clip to inner glass so landscape stays behind the wooden frame
+  c.save();
+  c.beginPath();
+  c.rect(
+    Math.round((wCol + fT) * P),
+    Math.round((wyRow + fT) * P),
+    Math.round((wwCols - fT * 2) * P),
+    Math.round((whRows - fT * 2) * P)
+  );
+  c.clip();
+
+  var horizRow = wyRow + Math.round(whRows * 0.66);
+  var trackRow = wyRow + Math.round(whRows * 0.82);
+
+  // Seasonal palette
+  var lsBare = season==='winter';
+  var lsGround= season==='winter'?'#c0d4e4':season==='autumn'?'#1a0e04':season==='spring'?'#0c1808':'#0b1407';
+  var lsHill  = season==='winter'?'#d0e4f4':season==='autumn'?'#221208':season==='spring'?'#0e1e0a':'#0d1a09';
+  var lsTreeD = season==='winter'?'#100c0a':season==='autumn'?'#3a1800':season==='spring'?'#7a2858':'#091205';
+  var lsTreeM = season==='winter'?'#181008':season==='autumn'?'#7a3c10':season==='spring'?'#b05880':'#0c1a08';
+
+  // Subtle seasonal sky tint over glass
+  if (season!=='summer') {
+    var skyT={winter:'rgba(140,180,220,0.07)',autumn:'rgba(100,40,0,0.06)',spring:'rgba(80,140,60,0.05)'};
+    c.fillStyle=skyT[season]; c.fillRect(Math.round(wCol*P),Math.round(wyRow*P),wwCols*P,whRows*P);
+  }
+
+  // Ground fill
+  c.fillStyle = lsGround;
+  c.fillRect(Math.round(wCol*P), Math.round(horizRow*P), wwCols*P, (wyRow+whRows-horizRow)*P);
+
+  // Rolling hills along horizon
+  for (var hc = wCol; hc < wCol+wwCols; hc++) {
+    var hf = (hc - wCol) / wwCols;
+    var hh = Math.round(2.5*Math.sin(hf*Math.PI*2.2+0.4) + 1.5*Math.sin(hf*Math.PI*4.1));
+    if (hh > 0) {
+      c.fillStyle = lsHill;
+      c.fillRect(Math.round(hc*P), Math.round((horizRow-hh)*P), P, hh*P);
+    }
+  }
+
+  // Winter snow on ground
+  if (season==='winter') {
+    c.fillStyle='rgba(218,232,248,0.92)';
+    c.fillRect(Math.round(wCol*P),Math.round((horizRow-1)*P),wwCols*P,2*P);
+  }
+
+  // Tree silhouettes — foliage or bare branches by season
+  [[wCol+2,5],[wCol+6,7],[wCol+10,5],[wCol+14,6],[wCol+18,4]].forEach(function(tr2) {
+    var tx=tr2[0], th=tr2[1];
+    if (lsBare) {
+      // Bare winter branches: trunk + fork pixels
+      c.fillStyle=lsTreeD;
+      c.fillRect(Math.round(tx*P),Math.round((horizRow-th)*P),P,(th+1)*P);
+      var b1=Math.round(th*0.45),b2=Math.round(th*0.72);
+      c.fillRect(Math.round((tx-1)*P),Math.round((horizRow-b1)*P),P,P);
+      c.fillRect(Math.round((tx+1)*P),Math.round((horizRow-b1)*P),P,P);
+      c.fillStyle=lsTreeM;
+      c.fillRect(Math.round((tx-2)*P),Math.round((horizRow-b2)*P),P,P);
+      c.fillRect(Math.round((tx+2)*P),Math.round((horizRow-b2)*P),P,P);
+      c.fillRect(Math.round((tx-1)*P),Math.round((horizRow-b2-1)*P),P,P);
+      c.fillRect(Math.round((tx+1)*P),Math.round((horizRow-b2-1)*P),P,P);
+    } else {
+      for (var layer=0; layer<th; layer++) {
+        var tw=Math.max(1,Math.round((layer+1)*1.2));
+        c.fillStyle=layer<2?lsTreeD:lsTreeM;
+        c.fillRect(Math.round((tx-Math.floor(tw/2))*P),Math.round((horizRow-th+layer)*P),(tw+1)*P,P);
+      }
+    }
+    c.fillStyle=lsTreeD;
+    c.fillRect(Math.round(tx*P),Math.round(horizRow*P),P,P);
+  });
+
+  // Autumn: drifting leaves
+  if (season==='autumn') {
+    var lfC=['#8a3a00','#c05a10','#a04800','#d06000','#6a2c00'];
+    for (var li=0;li<10;li++) {
+      var lx=wCol+((li*7.3+t*(1.5+li%3*0.5)*3+Math.sin(t*0.8+li*1.7)*3)%wwCols);
+      var ly=wyRow+((t*(2+li%4*0.6)*5+li*11.3)%(whRows*5))/5;
+      c.fillStyle=lfC[li%5]; c.fillRect(Math.round(lx*P),Math.round(ly*P),P,P);
+    }
+  }
+
+  // Spring: floating petals
+  if (season==='spring') {
+    var ptC=['#e8a0c0','#f0c0d8','#d880a8','#c06090'];
+    for (var pi2=0;pi2<8;pi2++) {
+      var px2=wCol+((pi2*9.1+t*(0.8+pi2%3*0.3)*2+Math.sin(t*1.1+pi2*2.3)*2)%wwCols);
+      var py2=wyRow+((t*(1+pi2%3*0.5)*4+pi2*17.3)%(whRows*4))/4;
+      c.fillStyle=ptC[pi2%4]; c.fillRect(Math.round(px2*P),Math.round(py2*P),P,P);
+    }
+  }
+
+  // Falling snow
+  if (season==='winter') {
+    for (var sni=0;sni<22;sni++) {
+      var snX=wCol+((sni*11.7+t*(0.9+sni%3*0.3)*7+Math.sin(t*0.7+sni*1.3)*1.5)%wwCols);
+      var snY=wyRow+((t*(1.2+sni*0.12)*8+sni*13.1)%(whRows*8))/8;
+      c.fillStyle='rgba(228,240,252,'+(0.5+0.38*Math.sin(sni*2.1))+')';
+      c.fillRect(Math.round(snX*P),Math.round(snY*P),P,P);
+    }
+  }
+
+  // Train station building (right side of window)
+  var stX = wCol + wwCols - 20;
+  var stW = 16, stH = 9;
+  var stTop = horizRow - stH;
+  // Building body
+  c.fillStyle = '#181824';
+  c.fillRect(Math.round(stX*P), Math.round(stTop*P), stW*P, stH*P);
+  // Pitched roof
+  c.fillStyle = '#221830';
+  for (var ri=0; ri<stW+2; ri++) {
+    var rh2 = Math.max(0, Math.round(3.5 - Math.abs(ri-(stW+1)/2)*0.45));
+    c.fillRect(Math.round((stX-1+ri)*P), Math.round((stTop-1-rh2)*P), P, (rh2+1)*P);
+  }
+  // Chimneys
+  c.fillStyle = '#141020';
+  c.fillRect(Math.round((stX+2)*P), Math.round((stTop-4)*P), P, 3*P);
+  c.fillRect(Math.round((stX+12)*P), Math.round((stTop-3)*P), P, 2*P);
+  // Lit windows
+  [[stX+2,stTop+2],[stX+3,stTop+2],[stX+7,stTop+2],[stX+8,stTop+2],[stX+11,stTop+2],[stX+12,stTop+2]].forEach(function(w) {
+    c.fillStyle='rgba(255,200,80,0.65)'; c.fillRect(Math.round(w[0]*P),Math.round(w[1]*P),P,P);
+    c.fillStyle='rgba(255,190,60,0.35)'; c.fillRect(Math.round(w[0]*P),Math.round((w[1]+1)*P),P,P);
+  });
+  // Platform
+  c.fillStyle='#222030';
+  c.fillRect(Math.round((stX-2)*P), Math.round(horizRow*P), (stW+4)*P, 2*P);
+  // Lamp post
+  c.fillStyle='#1e1828';
+  c.fillRect(Math.round((stX+stW+2)*P), Math.round((horizRow-6)*P), P, 6*P);
+  var lampGrd=c.createRadialGradient((stX+stW+2.5)*P,(horizRow-6)*P,0,(stX+stW+2.5)*P,(horizRow-6)*P,4*P);
+  lampGrd.addColorStop(0,'rgba(255,230,120,0.55)'); lampGrd.addColorStop(1,'transparent');
+  c.fillStyle=lampGrd; c.fillRect(Math.round((stX+stW-1)*P),Math.round((horizRow-10)*P),8*P,8*P);
+
+  // Winter: snow caps on station roof and chimneys
+  if (season==='winter') {
+    c.fillStyle='rgba(215,232,248,0.93)';
+    c.fillRect(Math.round((stX-2)*P),Math.round((stTop-5)*P),(stW+4)*P,P);
+    c.fillRect(Math.round((stX)*P),Math.round((stTop-3)*P),stW*P,P);
+    c.fillRect(Math.round((stX+2)*P),Math.round((stTop-5)*P),2*P,P);
+    c.fillRect(Math.round((stX+12)*P),Math.round((stTop-4)*P),2*P,P);
+  }
+
+  // Railroad tracks
+  c.fillStyle='#3e3020';
+  c.fillRect(Math.round(wCol*P), Math.round(trackRow*P), wwCols*P, P);
+  c.fillRect(Math.round(wCol*P), Math.round((trackRow+2)*P), wwCols*P, P);
+  // Ties
+  for (var ti=wCol; ti<wCol+wwCols; ti+=4) {
+    c.fillStyle='#2a1a0e';
+    c.fillRect(Math.round(ti*P), Math.round((trackRow-1)*P), 2*P, 4*P);
+  }
+
+  // Train (when railroad sound is on)
+  if (hasTrain) {
+    var tSpeed=6.5, tTotalW=26;
+    var tPos=wCol+Math.round((t*tSpeed)%(wwCols+tTotalW+8))-tTotalW;
+    var tTop=trackRow-5;
+
+    function tpx(col,row,color) {
+      if (col<wCol||col>=wCol+wwCols) return;
+      pxFull(col,row,color);
+    }
+    function trect(col,row,w,h,color) {
+      var x1=Math.max(col,wCol), x2=Math.min(col+w,wCol+wwCols);
+      if (x1>=x2) return;
+      c.fillStyle=color;
+      c.fillRect(Math.round(x1*P),Math.round(row*P),(x2-x1)*P,h*P);
+    }
+
+    // Passenger car
+    trect(tPos, tTop+1, 10, 4, '#1e2840');
+    trect(tPos, tTop, 10, 1, '#262e48');
+    // Car windows
+    [tPos+1,tPos+3,tPos+6,tPos+8].forEach(function(wx2){ tpx(wx2,tTop+2,'rgba(255,230,160,0.75)'); tpx(wx2+1,tTop+2,'rgba(255,230,160,0.75)'); });
+    // Car wheels
+    [tPos+1,tPos+4,tPos+7].forEach(function(wx2){ tpx(wx2,tTop+5,'#111'); });
+
+    // Engine
+    var ex=tPos+10;
+    trect(ex, tTop, 14, 5, '#1a2238');
+    trect(ex, tTop-1, 14, 1, '#222c40');
+    // Boiler dome
+    trect(ex+2, tTop-2, 4, 2, '#1e2840');
+    // Smokestack
+    trect(ex+4, tTop-3, 2, 2, '#161e30');
+    trect(ex+3, tTop-4, 4, 1, '#1a2238');
+    // Headlamp glow
+    var hlGrd=c.createRadialGradient((ex+13.5)*P,(tTop+2.5)*P,0,(ex+13.5)*P,(tTop+2.5)*P,5*P);
+    hlGrd.addColorStop(0,'rgba(255,240,180,0.5)'); hlGrd.addColorStop(1,'transparent');
+    c.fillStyle=hlGrd; c.fillRect(Math.round((ex+10)*P),Math.round(tTop*P),8*P,6*P);
+    tpx(ex+13,tTop+2,'rgba(255,245,200,0.9)');
+    // Engine wheels
+    [ex+1,ex+4,ex+7,ex+10].forEach(function(wx2){ tpx(wx2,tTop+5,'#111'); tpx(wx2+1,tTop+5,'#0a0a0a'); });
+    // Cab
+    trect(ex+9, tTop-2, 5, 3, '#1a2030');
+    tpx(ex+10,tTop-1,'rgba(255,210,100,0.6)'); tpx(ex+11,tTop-1,'rgba(255,210,100,0.6)');
+
+    // Steam puffs
+    [0,1,2].forEach(function(pi) {
+      var puffAlpha=Math.max(0,0.45-pi*0.14);
+      var puffX=(ex+5+Math.sin(t*2.5+pi)*0.8)*P;
+      var puffY=(tTop-4-pi)*P;
+      if ((ex+5)>=wCol&&(ex+5)<wCol+wwCols) {
+        c.fillStyle='rgba(180,195,210,'+puffAlpha+')';
+        c.beginPath(); c.arc(puffX,puffY,P*(0.9+pi*0.3),0,Math.PI*2); c.fill();
+      }
+    });
+  }
+
+  c.restore(); // end landscape clip
+
+  // Redraw frame & cross dividers on top of landscape
+  for (let r = wyRow; r < wyRow+whRows; r++) {
+    for (let ft2 = 0; ft2 < fT; ft2++) {
+      pxFull(wCol+ft2, r, frameCol); pxFull(wCol+wwCols-1-ft2, r, frameSha);
+    }
+  }
+  for (let col2 = wCol; col2 < wCol+wwCols; col2++) {
+    for (let ft2 = 0; ft2 < fT; ft2++) {
+      pxFull(col2, wyRow+ft2, frameCol); pxFull(col2, wyRow+whRows-1-ft2, frameSha);
+    }
+  }
+  for (let r = wyRow; r < wyRow+whRows; r++) { pxFull(midCol2,r,frameCol); pxFull(midCol2+1,r,frameSha); }
+  for (let col2 = wCol; col2 < wCol+wwCols; col2++) { pxFull(col2,midRow2,frameCol); pxFull(col2,midRow2+1,frameSha); }
+
   // ── Pixel windowsill ──────────────────────────────────────────────────────
   const sillRow2 = wyRow + whRows + fT;
   const sillRowsN = Math.ceil(sillH/P) + 1;
@@ -1127,7 +1362,8 @@ function drawScene() {
     for (let col2 = wCol-fT; col2 < wCol+wwCols+fT+1; col2++)
       pxFull(col2, r, r===sillRow2?'#7a5828':r===sillRow2+1?'#5a3e1a':'#2e1e08');
 
-  // ── Pixel plants on sill — bigger, fuller, flower plant ──────────────────
+  // ── Sill decorations: plants or sabbat altar ───────────────────────────────
+  if (!sabbat) {
   const plantRow = sillRow2 - 1;
   const sw2 = 0; // no breeze sound
 
@@ -1233,6 +1469,191 @@ function drawScene() {
       pxFull(pc+4+s,plantRow-9,'#d4a020');
     }
   });
+  } else {
+    // ── Wheel of the Year altar decorations ──────────────────────────────────
+    var PR=sillRow2-1;
+    var S=function(dc,dr,col){pxFull(wCol+dc,PR-dr,col);};
+    var SR=function(dc,dr,w2,h2,col){c.fillStyle=col;c.fillRect(Math.round((wCol+dc)*P),Math.round((PR-dr-h2+1)*P),w2*P,h2*P);};
+
+    if (sabbat==='samhain') {
+      // ── Samhain: jack-o-lanterns + cauldron + candles ──
+      [[2,5,5],[11,6,6],[21,5,5]].forEach(function(jd){
+        var dc=jd[0],jh=jd[1],jw=jd[2];
+        S(dc+Math.floor(jw/2),jh+1,'#1a4008'); // stem
+        for(var jr=1;jr<=jh;jr++){for(var jc=0;jc<jw;jc++){
+          var e=jc===0||jc===jw-1,eye=jr===Math.round(jh*0.65)&&(jc===1||jc===jw-2),mth=jr===Math.round(jh*0.35)&&jc>=1&&jc<=jw-2&&jc%2===1;
+          S(dc+jc,jr,e?'#8a2c00':eye||mth?'#050505':jr===jh?'#c84800':'#d46000');
+        }}
+        SR(dc-1,2,jw+2,2,'#7a4820'); S(dc-1,2,'#6a3010'); S(dc+jw,2,'#6a3010');
+      });
+      // Cauldron
+      SR(30,6,8,5,'#1e1e22'); SR(29,7,10,1,'#2a2a2e');
+      SR(31,2,5,2,'#181818'); SR(32,1,3,1,'#181818'); // legs
+      var cgrd=c.createRadialGradient((wCol+34)*P,(PR-5)*P,0,(wCol+34)*P,(PR-5)*P,3.5*P);
+      cgrd.addColorStop(0,'rgba(40,220,40,0.45)');cgrd.addColorStop(1,'transparent');
+      c.fillStyle=cgrd;c.fillRect(Math.round((wCol+30)*P),Math.round((PR-8)*P),8*P,5*P);
+      var bp=Math.sin(t*2.8)*0.4;
+      S(33,Math.round(7-bp),'rgba(50,230,50,0.55)'); S(35,Math.round(7.5-bp*0.7),'rgba(50,230,50,0.4)');
+      // Black candles
+      [[39,6],[42,8]].forEach(function(cd,ci){
+        SR(cd[0],cd[1],2,cd[1],'#1a0a1e');
+        c.fillStyle='rgba(255,160,50,'+(0.78+Math.sin(t*6.3+ci*2)*0.2)+')';
+        c.fillRect(Math.round((wCol+cd[0]+0.5)*P),Math.round((PR-cd[1]-1)*P),P,P);
+      });
+
+    } else if (sabbat==='yule') {
+      // ── Yule: log with holly + pillar candles + pine ──
+      SR(3,5,16,3,'#6a3a10'); SR(4,6,14,1,'#7a4a18'); // log body + top
+      S(3,3,'#4a2008');S(3,4,'#4a2008');S(3,5,'#4a2008');S(18,3,'#4a2008');S(18,4,'#4a2008');S(18,5,'#4a2008'); // ends
+      [[5,6],[9,6],[14,6]].forEach(function(hl){ // holly + berries on log
+        S(hl[0],hl[1],'#1a5808');S(hl[0]+1,hl[1],'#2a7010');
+        S(hl[0],hl[1]+1,'#cc1010');S(hl[0]+1,hl[1]+1,'#ee2828');
+      });
+      SR(10,10,2,4,'#e8e4da'); S(10,10,'#c4c0b4'); S(10,7,'#f4f0e4'); // candle on log
+      var cf0=Math.sin(t*6.2)*0.18;
+      c.fillStyle='rgba(255,240,90,'+(0.88+cf0)+')';c.fillRect(Math.round((wCol+10.5)*P),Math.round((PR-11)*P),P,P);
+      c.fillStyle='rgba(255,130,20,0.4)';c.fillRect(Math.round((wCol+10)*P),Math.round((PR-11)*P),P,P);
+      [[0,9],[21,8]].forEach(function(sc,si){ // side pillar candles
+        SR(sc[0],sc[1],2,sc[1],'#d8d4c8');
+        c.fillStyle='rgba(255,230,80,'+(0.82+Math.sin(t*5.8+si*1.9)*0.15)+')';
+        c.fillRect(Math.round((wCol+sc[0]+0.5)*P),Math.round((PR-sc[1]-1)*P),P,P);
+        SR(sc[0]-1,1,4,1,'#a07838'); // holder
+      });
+      [[1,2],[3,1],[23,2],[25,1]].forEach(function(ps){ // pine sprigs
+        S(ps[0],ps[1]+2,'#0a3008');S(ps[0]+1,ps[1]+2,'#1a5010');S(ps[0]+2,ps[1]+1,'#0a3008');
+        S(ps[0]+1,ps[1]+3,'#cc1010'); // berry
+      });
+
+    } else if (sabbat==='imbolc') {
+      // ── Imbolc: Brigid's cross + candles + snowdrops ──
+      var bx=15,by=11;
+      S(bx,by,'#c4a028');S(bx+1,by,'#d4b038');S(bx,by+1,'#d4b038');S(bx+1,by+1,'#c4a028'); // center
+      for(var ba=1;ba<=5;ba++){ // arms
+        S(bx-ba,by,'#c4a028');S(bx-ba,by+1,'#d4b038');
+        S(bx+1+ba,by,'#d4b038');S(bx+1+ba,by+1,'#c4a028');
+        S(bx,by-ba,'#d4b038');S(bx+1,by-ba,'#c4a028');
+        S(bx,by+1+ba,'#c4a028');S(bx+1,by+1+ba,'#d4b038');
+      }
+      [[2,7],[9,9],[30,7]].forEach(function(wc3,ci){ // white candles
+        SR(wc3[0],wc3[1],2,wc3[1],'#f0eee8');S(wc3[0],wc3[1],'#d0ccc4');
+        c.fillStyle='rgba(255,248,140,'+(0.85+Math.sin(t*6+ci*2.2)*0.12)+')';
+        c.fillRect(Math.round((wCol+wc3[0]+0.5)*P),Math.round((PR-wc3[1]-1)*P),P,P);
+        c.fillStyle='rgba(255,160,40,0.35)';c.fillRect(Math.round((wCol+wc3[0])*P),Math.round((PR-wc3[1]-1)*P),P,P);
+        SR(wc3[0]-1,1,4,1,'#c0c8d0'); // saucer
+      });
+      [[35,0],[38,0],[41,0]].forEach(function(sd,si){ // snowdrops
+        for(var sr=1;sr<=5+si;sr++)S(sd[0],sr,'#2a5818');
+        S(sd[0],5+si,'#e8e8e8');S(sd[0]+1,4+si,'#d8e8e0');S(sd[0]+1,5+si,'#e8e8e8');
+        S(sd[0]-1,3,'#2a6020');S(sd[0]+1,2,'#2a6020');
+        SR(sd[0]-1,1,4,1,'#7a4820'); SR(sd[0]-1,0,4,1,'#8a5030');
+      });
+
+    } else if (sabbat==='ostara') {
+      // ── Ostara: decorated eggs + white bunny ──
+      [[1,'#f0c8a0','#5080d0'],[13,'#a8d8f0','#d060a0'],[25,'#b8f0a0','#8050c0']].forEach(function(ed,ei){
+        var dc=ed[0],bc=ed[1],sc=ed[2];
+        SR(dc+1,1,4,1,'#9a6428'); SR(dc,0,6,1,'#8a5420'); SR(dc-1,-1,7,1,'#6a3818'); // stand
+        S(dc+1,2,bc);S(dc+2,2,bc);S(dc+3,2,bc); // egg top
+        S(dc,3,bc);S(dc+1,3,sc);S(dc+2,3,bc);S(dc+3,3,sc);S(dc+4,3,bc);
+        S(dc,4,bc);S(dc+1,4,bc);S(dc+2,4,sc);S(dc+3,4,bc);S(dc+4,4,bc);
+        S(dc,5,bc);S(dc+1,5,sc);S(dc+2,5,bc);S(dc+3,5,sc);S(dc+4,5,bc);
+        S(dc+1,6,bc);S(dc+2,6,bc);S(dc+3,6,bc); // egg bottom
+        S(dc+1,7,bc);S(dc+2,7,bc);
+      });
+      // White bunny
+      var bdc=37;
+      S(bdc+1,9,'#e8e8e8');S(bdc+1,8,'#e8e8e8');S(bdc+1,7,'#e8e8e8'); // ear
+      S(bdc,6,'#dde0dc');S(bdc+1,6,'#e8e8e8');S(bdc+2,6,'#dde0dc'); // head
+      S(bdc,5,'#d8dcd8');S(bdc+1,5,'#e8e8e8');S(bdc+2,5,'#d8dcd8');
+      S(bdc,4,'#dde0dc');S(bdc+1,4,'#e8e8e8');S(bdc+2,4,'#dde0dc');S(bdc+3,4,'#e8e8e8'); // body
+      S(bdc,3,'#d8dcd8');S(bdc+1,3,'#e8e8e8');S(bdc+2,3,'#d8dcd8');
+      S(bdc+1,6,'#f0a8b8'); // pink nose
+      S(bdc-1,4,'#e8e8e8'); // tail
+      SR(bdc-1,1,6,1,'#8a5030'); SR(bdc-1,0,6,1,'#7a4820'); SR(bdc-2,-1,7,1,'#6a3818'); // pot
+
+    } else if (sabbat==='beltane') {
+      // ── Beltane: maypole + flowers + bonfire ──
+      var mpX=18;
+      SR(mpX,18,1,18,'#8a5a20'); S(mpX,19,'#b07828'); // pole + top
+      var rbC=['#e03040','#40a0e8','#f0e030','#50c860'];
+      for(var ri=0;ri<18;ri++){var rx=Math.round(Math.sin(ri*0.75)*3.5);S(mpX+rx,18-ri,rbC[ri%4]);S(mpX-rx,18-ri,rbC[(ri+2)%4]);} // ribbons
+      [[2,1],[5,2],[8,1],[28,1],[31,2],[34,1]].forEach(function(ff,fi){ // flowers
+        S(ff[0]+1,ff[1]+2,'#2a6018');S(ff[0],ff[1]+2,'#1a5010');
+        S(ff[0],ff[1]+3,rbC[fi%4]);S(ff[0]+1,ff[1]+3,rbC[(fi+1)%4]);S(ff[0]+1,ff[1]+4,rbC[(fi+2)%4]);
+        SR(ff[0]-1,1,4,1,'#7a4820');SR(ff[0]-1,0,4,1,'#6a3818');
+      });
+      var bfX=10; SR(bfX,3,6,2,'#7a4020'); SR(bfX+1,4,4,1,'#6a3010'); // bonfire logs
+      [[0,4],[1,5],[2,6],[3,5],[4,4],[5,4]].forEach(function(fl,fi){ // flames
+        var fa=0.7+Math.sin(t*6.2+fi*1.4)*0.25;
+        c.fillStyle='rgba(255,200,30,'+fa+')';c.fillRect(Math.round((wCol+bfX+fl[0])*P),Math.round((PR-fl[1])*P),P,P);
+        c.fillStyle='rgba(255,80,10,'+(fa*0.6)+')';c.fillRect(Math.round((wCol+bfX+fl[0])*P),Math.round((PR-fl[1]+1)*P),P,P);
+      });
+
+    } else if (sabbat==='litha') {
+      // ── Litha: sunflower + sun wheel + fern ──
+      var sfX=3,sfH=14;
+      for(var sr=1;sr<=sfH;sr++)S(sfX+2,sr,sr%3===0?'#3a6820':'#2a5818'); // stem
+      S(sfX,sfH-5,'#2a6018');S(sfX+1,sfH-4,'#2a6018');S(sfX+4,sfH-8,'#2a6018');S(sfX+3,sfH-7,'#2a6018'); // leaves
+      var scX=sfX+2,scY=sfH+2;
+      [[-2,0],[-1,-1],[0,-2],[1,-1],[2,0],[1,1],[0,2],[-1,1],[-2,1],[-1,2],[2,1],[1,2]].forEach(function(pe){S(scX+pe[0],scY-pe[1],'#e8b800');}); // petals
+      S(scX,scY,'#3a2010');S(scX+1,scY,'#3a2010');S(scX,scY-1,'#4a2c18');S(scX+1,scY-1,'#4a2c18'); // center
+      SR(sfX,1,5,1,'#7a4820');SR(sfX-1,0,6,1,'#6a3818'); // pot
+      var swX=21,swY=11; // sun wheel
+      [[-3,0],[-2,-2],[0,-3],[2,-2],[3,0],[2,2],[0,3],[-2,2]].forEach(function(sw){S(swX+sw[0],swY-sw[1],'#f0c820');});
+      [[-2,-1],[-1,-2],[1,-2],[2,-1],[2,1],[1,2],[-1,2],[-2,1]].forEach(function(sw){S(swX+sw[0],swY-sw[1],'#e8b800');});
+      S(swX,swY,'#fff080');S(swX+1,swY,'#fff080');S(swX,swY-1,'#ffe840');S(swX+1,swY-1,'#ffe840'); // center
+      [[30,0],[34,0],[38,0]].forEach(function(fn,fi){ // fern pots
+        for(var fr=1;fr<=8+fi*2;fr++){S(fn[0]+1,fr,'#1a5010');if(fr>1&&fr%2===0){S(fn[0],fr,'#2a6818');S(fn[0]+2,fr,'#2a6818');}if(fr>2&&fr%2===1){S(fn[0]-1,fr,'#1a5010');S(fn[0]+3,fr,'#1a5010');}}
+        SR(fn[0]-1,1,5,1,'#7a4820');SR(fn[0]-1,0,5,1,'#6a3818');
+      });
+
+    } else if (sabbat==='lughnasadh') {
+      // ── Lughnasadh: wheat sheaf + bread + sunflower ──
+      var wsX=3;
+      SR(wsX+3,5,5,1,'#9a7828'); // tie
+      [[-2,14],[-1,15],[0,16],[1,16],[2,15],[3,14],[4,15],[5,16],[6,15],[7,14]].forEach(function(st){
+        var sx=wsX+st[0]+4,stH=st[1];
+        for(var sr=6;sr<=stH;sr++)S(sx,sr,'#c4a030');
+        S(sx,stH+2,'#d4b040');S(sx-1,stH+1,'#c4a028');S(sx+1,stH+1,'#c4a028');S(sx,stH+1,'#d4b838');
+      });
+      SR(24,4,10,3,'#8a4c18'); SR(25,6,8,1,'#a06028'); // bread loaf
+      S(24,5,'#7a3c10');S(33,5,'#7a3c10'); // sides
+      [[26,6],[28,6],[30,6],[32,6]].forEach(function(sc){S(sc[0],sc[1],'#6a3010');}); // score
+      SR(23,2,12,2,'#6a4c20'); S(23,2,'#5a3c18'); S(34,2,'#5a3c18'); // board
+      // Sunflower right
+      var sf2X=38;
+      for(var sr2=1;sr2<=10;sr2++)S(sf2X+1,sr2,'#2a5818');
+      S(sf2X,6,'#2a6018');S(sf2X+2,8,'#2a6018');
+      [[-1,0],[0,-1],[1,0],[0,1],[-1,-1],[1,-1],[1,1],[-1,1]].forEach(function(pe){S(sf2X+1+pe[0],10+pe[1],'#e8b800');});
+      S(sf2X+1,10,'#4a2c18');S(sf2X+2,10,'#3a2010');
+      SR(sf2X,1,4,1,'#7a4820');SR(sf2X-1,0,5,1,'#6a3818');
+
+    } else if (sabbat==='mabon') {
+      // ── Mabon: apple branch + grapes + harvest basket ──
+      for(var ac=0;ac<16;ac++)S(1+ac,10,'#5a3010'); // main branch
+      [[2,4],[5,5],[9,4],[13,5]].forEach(function(sb){ // sub-branches + apples
+        for(var sr=1;sr<=sb[1];sr++)S(1+sb[0],10+sr,'#5a3010');
+        var aX=1+sb[0],aY=10+sb[1]+1;
+        S(aX,aY+3,'#8b1a10');S(aX+1,aY+3,'#aa2a18');
+        S(aX,aY+2,'#aa2a18');S(aX+1,aY+2,'#cc3820');
+        S(aX,aY+1,'#8b1a10');S(aX+1,aY+1,'#aa2a18');
+        S(aX,aY+4,'#3a2010');S(aX+1,aY+4,'#2a5818');S(aX+2,aY+5,'#2a5818'); // stem+leaf
+      });
+      // Grape cluster
+      [[22,0],[23,0],[24,0],[25,0],[21,1],[22,1],[23,1],[24,1],[25,1],[26,1],[22,2],[23,2],[24,2],[25,2],[23,3],[24,3]].forEach(function(gp,gi){
+        S(gp[0],gp[1]+8,gi%3===0?'#7840b8':'#6030a0');
+        c.fillStyle='rgba(180,140,220,0.3)';c.fillRect(Math.round((wCol+gp[0])*P),Math.round((PR-gp[1]-8)*P),P,P);
+      });
+      S(23,12,'#3a2010');S(24,12,'#3a2010'); // grape vine
+      // Harvest basket
+      for(var hbr=1;hbr<=6;hbr++){for(var hbc=0;hbc<9;hbc++)S(30+hbc,hbr,(hbr+hbc)%2===0?'#9a6428':'#7a4a18');}
+      SR(29,7,11,1,'#a87030'); // rim
+      S(32,8,'#8a5820');S(33,9,'#8a5820');S(35,9,'#8a5820');S(36,8,'#8a5820'); // handle
+      S(31,7,'#cc3820');S(32,7,'#aa2818'); // apple in basket
+      S(34,7,'#2a6018');S(35,7,'#3a7020'); // leaf in basket
+      SR(30,0,9,1,'#7a4828'); // base
+    }
+  }
 
   // Rain on glass — vertical streaks, fixed x positions
   if (hasRain || hasThunder) {
@@ -1326,6 +1747,42 @@ function drawScene() {
   c.fillStyle='#5a3c18'; c.fillRect(Math.round((lLC)*P), Math.round(lLR*P), 7*P, P);
   // Base foot (widest)
   c.fillStyle='#3a2510'; c.fillRect(Math.round((lLC-1)*P), Math.round((lLR+1)*P), 9*P, P);
+
+  // ── String lights (drawn last — in front of everything) ───────────────────
+  var lightPalette = {
+    samhain: [[220,80,255],[255,80,20],[140,0,220],[255,140,0]],
+    yule:    [[255,80,80],[60,180,80],[255,220,60],[80,160,255],[255,255,255]],
+    imbolc:  [[255,255,220],[200,220,255],[255,210,240],[220,240,220]],
+    ostara:  [[255,160,200],[160,220,160],[255,240,120],[180,200,255]],
+    beltane: [[255,60,80],[60,200,80],[255,220,40],[80,180,255],[255,120,200]],
+    litha:   [[255,240,60],[255,200,20],[255,255,160],[255,220,80]],
+    lughnasadh:[[255,200,40],[220,140,30],[255,230,80],[200,120,20]],
+    mabon:   [[220,80,20],[180,100,20],[255,160,40],[150,60,10]],
+  };
+  var lPal = lightPalette[sabbat] || [[255,210,80],[255,180,50],[255,230,110],[255,195,60]];
+  var bulbSpacing = 7;
+  var wireY = 2.2 * P;
+  // Wire
+  c.strokeStyle='rgba(60,45,25,0.55)'; c.lineWidth=Math.max(1,P*0.4);
+  c.beginPath(); c.moveTo(0,wireY); c.lineTo(W,wireY); c.stroke();
+  // Bulbs
+  for (var bi=0; bi * bulbSpacing * P < W + bulbSpacing*P; bi++) {
+    var bx2 = (bi * bulbSpacing + 1) * P;
+    var by2 = wireY + 1.8 * P;
+    var rgb = lPal[bi % lPal.length];
+    var twinkle = 0.72 + 0.22 * Math.sin(t * 0.5 + bi * 1.618);
+    // Glow halo
+    var bgrd = c.createRadialGradient(bx2, by2, 0, bx2, by2, 3.5*P);
+    bgrd.addColorStop(0,'rgba('+rgb[0]+','+rgb[1]+','+rgb[2]+','+(twinkle*0.55)+')');
+    bgrd.addColorStop(1,'transparent');
+    c.fillStyle=bgrd; c.fillRect(bx2-4*P, by2-4*P, 8*P, 8*P);
+    // Bulb body
+    c.fillStyle='rgba('+rgb[0]+','+rgb[1]+','+rgb[2]+','+twinkle+')';
+    c.fillRect(bx2-P*0.5, by2-P*0.5, P*1.5, P*2);
+    // Tiny cap
+    c.fillStyle='rgba(80,60,30,0.7)';
+    c.fillRect(bx2-P*0.3, wireY+P*0.8, P, P*0.8);
+  }
 }
 
 
