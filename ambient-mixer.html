@@ -424,7 +424,7 @@ const engines = {};
 
 const LOCAL_FILES = {
   rain:    '769354__fudgealtoid__rainforest-rain-on-a-hot-tin-roof.mp3',
-  fire:    '729396__heckfricker__campfire-02.wav',
+  fire:    '729396__heckfricker__campfire-02.mp3',
   train:   '737954__qubodup__train-driving-by-loop.flac',
   thunder: '21043__acclivity__stormloop22jul06.mp3',
 };
@@ -445,13 +445,22 @@ function makeLocalAudio(sound, vol) {
   el.volume = Math.min(1, vol * masterVol);
   let _vol = vol;
 
-  el.play().catch(() => {
-    // File unavailable — fall back to synth
-    if (engines[sound] && synthMap[sound]) {
-      const synth = synthMap[sound](_vol);
-      engines[sound] = synth;
-    }
-  });
+  function startPlay() {
+    el.play().catch(err => {
+      console.warn('[SoftHours] play failed for', sound, '-', err.name);
+      // Only fall back to synth on genuine format errors, not "not ready yet"
+      if (err.name === 'NotSupportedError' && synthMap[sound] && engines[sound]) {
+        engines[sound] = synthMap[sound](_vol);
+      }
+    });
+  }
+
+  // Wait for file to be buffered before playing — avoids premature synth fallback
+  if (el.readyState >= 3) {
+    startPlay();
+  } else {
+    el.addEventListener('canplay', startPlay, { once: true });
+  }
 
   return {
     gain: { gain: { setTargetAtTime(v) { _vol = v; el.volume = Math.min(1, v * masterVol); } } },
