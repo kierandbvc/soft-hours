@@ -525,7 +525,7 @@ const LOCAL_FILES = {
   train:   '737954__qubodup__train-driving-by-loop.mp3',
   thunder: '21043__acclivity__stormloop22jul06.mp3',
 };
-const LOCAL_FILE_GAIN = { fire: 3.0 };
+const LOCAL_FILE_GAIN = { fire: 6.0, train: 0.5 };
 const audioEls = {};
 // Sounds that must loop gaplessly — loaded via Web Audio API (fetch+decode)
 // instead of HTML audio element, which adds an MP3 encoder-delay gap on loop.
@@ -2187,7 +2187,7 @@ function drawScene() {
     var bx2 = (bi * bulbSpacing + 1) * P;
     var by2 = wireY + 1.8 * P;
     var rgb = lPal[bi % lPal.length];
-    var twinkle = 0.72 + 0.22 * Math.sin(t * 0.5 + bi * 1.618);
+    var twinkle = 0.70 + 0.28 * Math.sin(t * 1.1 + bi * 1.618);
     // Glow halo
     var bgrd = c.createRadialGradient(bx2, by2, 0, bx2, by2, 3.5*P);
     bgrd.addColorStop(0,'rgba('+rgb[0]+','+rgb[1]+','+rgb[2]+','+(twinkle*0.55)+')');
