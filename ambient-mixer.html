@@ -527,8 +527,13 @@ const LOCAL_FILES = {
 };
 const LOCAL_FILE_GAIN = { fire: 3.0 };
 const audioEls = {};
+// Sounds that must loop gaplessly — loaded via Web Audio API (fetch+decode)
+// instead of HTML audio element, which adds an MP3 encoder-delay gap on loop.
+const GAPLESS_SOUNDS = new Set(['rain', 'fire', 'train', 'thunder']);
+const gaplessBuffers = {};
 
 Object.entries(LOCAL_FILES).forEach(([key, filename]) => {
+  if (GAPLESS_SOUNDS.has(key)) return; // handled separately
   const el = document.createElement('audio');
   el.src = filename;
   el.loop = true; el.preload = 'auto';
@@ -538,7 +543,54 @@ Object.entries(LOCAL_FILES).forEach(([key, filename]) => {
   audioEls[key] = el;
 });
 
+// Pre-fetch gapless sounds so they're ready when the user clicks
+Object.entries(LOCAL_FILES).forEach(([key, filename]) => {
+  if (!GAPLESS_SOUNDS.has(key)) return;
+  fetch(filename)
+    .then(r => r.arrayBuffer())
+    .then(ab => {
+      const tmpCtx = new (window.AudioContext || window.webkitAudioContext)();
+      return tmpCtx.decodeAudioData(ab).then(buf => { gaplessBuffers[key] = buf; tmpCtx.close(); });
+    })
+    .catch(() => console.warn('[SoftHours] gapless prefetch failed for', key, filename));
+});
+
+function makeGaplessAudio(sound, vol) {
+  ensureCtx();
+  const gainMul = LOCAL_FILE_GAIN[sound] || 1;
+  const gain = ctx.createGain();
+  gain.gain.value = vol * masterVol * gainMul;
+  gain.connect(getMaster());
+  let src = null;
+  let _vol = vol;
+
+  function startFromBuffer(buf) {
+    src = ctx.createBufferSource();
+    src.buffer = buf;
+    src.loop = true;
+    src.connect(gain);
+    src.start(0);
+  }
+
+  if (gaplessBuffers[sound]) {
+    startFromBuffer(gaplessBuffers[sound]);
+  } else {
+    // Buffer not ready yet — fetch now (user just clicked)
+    fetch(LOCAL_FILES[sound])
+      .then(r => r.arrayBuffer())
+      .then(ab => ctx.decodeAudioData(ab))
+      .then(buf => { gaplessBuffers[sound] = buf; if (engines[sound]) startFromBuffer(buf); })
+      .catch(() => { if (synthMap[sound] && engines[sound]) engines[sound] = synthMap[sound](_vol); });
+  }
+
+  return {
+    gain,
+    stop() { try { src && src.stop(); } catch(e){} gain.disconnect(); }
+  };
+}
+
 function makeLocalAudio(sound, vol) {
+  if (GAPLESS_SOUNDS.has(sound)) return makeGaplessAudio(sound, vol);
   const el = audioEls[sound];
   const gainMul = LOCAL_FILE_GAIN[sound] || 1;
   el.volume = Math.min(1, vol * masterVol * gainMul);
@@ -550,9 +602,7 @@ function makeLocalAudio(sound, vol) {
     usingSynth = true;
     console.warn('[SoftHours] falling back to synth for', sound);
     if (engines[sound] && engines[sound].isAudioEl) {
-      const prev = engines[sound];
       engines[sound] = synthMap[sound](_vol);
-      prev._synthReplaced = true;
     }
   }
 
@@ -563,13 +613,11 @@ function makeLocalAudio(sound, vol) {
     });
   }
 
-  // If file errored during preload, fall back immediately on click
   if (el.error) {
     fallbackToSynth();
   } else if (el.readyState >= 3) {
     startPlay();
   } else {
-    // Give the file a moment; if it errors, fall back to synth
     el.addEventListener('canplay', startPlay, { once: true });
     el.addEventListener('error', () => fallbackToSynth(), { once: true });
   }
