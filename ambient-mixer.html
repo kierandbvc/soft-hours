@@ -540,7 +540,8 @@ Object.entries(LOCAL_FILES).forEach(([key, filename]) => {
 
 function makeLocalAudio(sound, vol) {
   const el = audioEls[sound];
-  el.volume = Math.min(1, vol * masterVol);
+  const gainMul = LOCAL_FILE_GAIN[sound] || 1;
+  el.volume = Math.min(1, vol * masterVol * gainMul);
   let _vol = vol;
   let usingSynth = false;
 
@@ -574,7 +575,7 @@ function makeLocalAudio(sound, vol) {
   }
 
   return {
-    gain: { gain: { setTargetAtTime(v) { _vol = v; if (!usingSynth) el.volume = Math.min(1, v * masterVol); } } },
+    gain: { gain: { setTargetAtTime(v) { _vol = v; if (!usingSynth) el.volume = Math.min(1, v * masterVol * gainMul); } } },
     isAudioEl: true, el, volRef: () => _vol,
     stop() { el.pause(); el.currentTime = 0; }
   };
