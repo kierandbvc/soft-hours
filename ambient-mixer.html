@@ -1600,7 +1600,7 @@ function drawScene() {
 
   // ── Sill decorations: plants or sabbat altar ───────────────────────────────
   if (!sabbat) {
-  const plantRow = sillRow2 - 1;
+  const plantRow = sillRow2; // shifted down 1 from original (sillRow2-1) for foliage; pot lines compensate below
   const sw2 = 0; // no breeze sound
 
   const plantDefs = [
@@ -1610,11 +1610,11 @@ function drawScene() {
   ];
 
   plantDefs.forEach(function(def) {
-    var pc=def.col, type=def.type, s=sw2;
-    // Pot 4px wide
-    pxFull(pc,  plantRow+1,'#b87040'); pxFull(pc+1,plantRow+1,'#c88050'); pxFull(pc+2,plantRow+1,'#c88050'); pxFull(pc+3,plantRow+1,'#9a5228');
-    pxFull(pc,  plantRow+2,'#8a4820'); pxFull(pc+1,plantRow+2,'#a05830'); pxFull(pc+2,plantRow+2,'#a05830'); pxFull(pc+3,plantRow+2,'#6a3410');
-    pxFull(pc+1,plantRow,  '#3a2010'); pxFull(pc+2,plantRow,'#4a2818');
+    var pc=def.col-1, type=def.type, s=sw2;
+    // Pot 4px wide (compensated to stay at original position — pc+1, plantRow-1)
+    pxFull(pc+1,  (plantRow-1)+1,'#b87040'); pxFull(pc+2,(plantRow-1)+1,'#c88050'); pxFull(pc+3,(plantRow-1)+1,'#c88050'); pxFull(pc+4,(plantRow-1)+1,'#9a5228');
+    pxFull(pc+1,  (plantRow-1)+2,'#8a4820'); pxFull(pc+2,(plantRow-1)+2,'#a05830'); pxFull(pc+3,(plantRow-1)+2,'#a05830'); pxFull(pc+4,(plantRow-1)+2,'#6a3410');
+    pxFull(pc+2,(plantRow-1),  '#3a2010'); pxFull(pc+3,(plantRow-1),'#4a2818');
     if (type==='round') {
       // Very tall, very full — top at plantRow-18
       pxFull(pc+2+s,plantRow-1,'#3a6018'); pxFull(pc+3+s,plantRow-1,'#4a7820');
